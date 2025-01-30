@@ -85,7 +85,9 @@ class TwitchChatListener(SimpleIRCClient):
                 "card": card,
                 "marked": [False] * card_size,
                 "grid_columns": grid_side,
-                "grid_rows": grid_side
+                "grid_rows": grid_side,
+                "showCard": True,
+                "isBingo": False
             })
             print(f"[FIREBASE] Created {grid_side}x{grid_side} card for {username}")
             
@@ -119,18 +121,18 @@ class TwitchChatListener(SimpleIRCClient):
             if marked[index]:
                 if (not mark):
                     marked[index] = mark
-                    user_ref.update({"marked": marked})
+                    user_ref.update({"marked": marked, "showCard": True})
                     print(f"[FIREBASE] {username} unmarked position {index}")
                 return
 
             marked[index] = mark
-            user_ref.update({"marked": marked})
-
             # Check for win
             if self.check_bingo(marked, grid_columns, grid_rows):
                 print(f"[FIREBASE] Bingo! {username}")
+                user_ref.update({"marked": marked, "showCard": True, "isBingo": True})
             else:
                 print(f"[FIREBASE] {username} marked position {index}")
+                user_ref.update({"marked": marked, "showCard": True})
     
         except Exception as e:
             print(f"[ERROR] {e}")
