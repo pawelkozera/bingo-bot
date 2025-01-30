@@ -4,6 +4,7 @@ import json
 import firebase_admin
 from firebase_admin import credentials, firestore
 import random
+import math
 
 # Load Twitch credentials from JSON
 with open("twitch-IRC-credentials.json", "r") as config_file:
@@ -54,22 +55,115 @@ class TwitchChatListener(SimpleIRCClient):
         if message == "!bingojoin":
             print(f"[COMMAND] {username} requested to join Bingo")
             self.create_bingo_card(username)
+        elif message.startswith("!bingocheck"):
+            parts = message.split()
+            print(f"[COMMAND] {username} used bingocheck {parts[1]}")
+            if len(parts) < 2:
+                return
+            self.handle_bingocheck(connection, username, parts[1])
 
     def create_bingo_card(self, username):
         """Generate and store a Bingo card for the user"""
         try:
-            # Create a unique card with 9 random sentences
-            card = random.sample(SENTENCES, 9)
+            # Create a unique card with random sentences
+            card_size = 9  # Change this to any perfect square (4, 9, 16, 25, etc.)
+            card = random.sample(SENTENCES, card_size)
+            
+            # Calculate grid dimensions for square grid
+            grid_side = math.isqrt(card_size)
+            if grid_side ** 2 != card_size:
+                raise ValueError("Card size must be a perfect square for square grid")
             
             # Store in Firestore
             db.collection("users").document(username).set({
                 "card": card,
-                "marked": [False, False, False, False, False, False, False, False, False]
+                "marked": [False] * card_size,
+                "grid_columns": grid_side,
+                "grid_rows": grid_side
             })
-            print(f"[FIREBASE] Created card for {username}")
+            print(f"[FIREBASE] Created {grid_side}x{grid_side} card for {username}")
             
         except Exception as e:
             print(f"[ERROR] Failed to create card for {username}: {e}")
+    
+    def handle_bingocheck(self, connection, username, number_str):
+        """Process !bingocheck command"""
+        try:
+            # Get user data
+            user_ref = db.collection("users").document(username)
+            user_doc = user_ref.get()
+            
+            if not user_doc.exists:
+                return
+
+            user_data = user_doc.to_dict()
+            grid_columns = user_data["grid_columns"]
+            grid_rows = user_data["grid_rows"]
+            max_number = grid_columns * grid_rows
+
+            # Validate input
+            number = int(number_str)
+            if not (1 <= number <= max_number):
+                print(f"[ERROR] {username} typed wrong number {number}")
+                return
+
+            # Update marked status
+            index = number - 1
+            marked = user_data["marked"]
+            if marked[index]:
+                return
+
+            marked[index] = True
+            user_ref.update({"marked": marked})
+
+            # Check for win
+            if self.check_bingo(marked, grid_columns, grid_rows):
+                print(f"[FIREBASE] Bingo! {username}")
+            else:
+                print(f"[FIREBASE] {username} marked position {index}")
+    
+        except Exception as e:
+            print(f"[ERROR] {e}")
+            return
+    
+    def check_bingo(self, marked, grid_columns=3, grid_rows=3):
+        """
+        Check for Bingo in flexible grid sizes.
+        Default: 3x3 grid (3 columns, 3 rows)
+        """
+        # Validate grid dimensions match marked array size
+        if len(marked) != grid_columns * grid_rows:
+            print(f"[ERROR] Grid {grid_columns}x{grid_rows} doesn't match {len(marked)} marked slots")
+            return False
+
+        # Convert to 2D grid (list of rows)
+        grid = []
+        for i in range(grid_rows):
+            start = i * grid_columns
+            end = start + grid_columns
+            grid.append(marked[start:end])
+
+        # Check horizontal lines
+        for row in grid:
+            if all(row):
+                return True
+
+        # Check vertical lines
+        for col in range(grid_columns):
+            if all(grid[row][col] for row in range(grid_rows)):
+                return True
+
+        # Check diagonals (only if square grid)
+        if grid_columns == grid_rows:
+            # Primary diagonal (top-left to bottom-right)
+            if all(grid[i][i] for i in range(grid_columns)):
+                return True
+            
+            # Secondary diagonal (top-right to bottom-left)
+            if all(grid[i][grid_columns-1-i] for i in range(grid_columns)):
+                return True
+
+        return False
 
     def on_ping(self, connection, event):
         print("[DEBUG] Received PING, sending PONG...")
