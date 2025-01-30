@@ -1,0 +1,8 @@
+# Ignore Firebase key config file
+firebase-key.json
+
+# Ignore twitch IRC credentials config file
+twitch-IRC-credentials.json
+
+# Ignore venv
+.venv
