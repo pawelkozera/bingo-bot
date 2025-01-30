@@ -52,15 +52,21 @@ class TwitchChatListener(SimpleIRCClient):
         message = event.arguments[0]
         print(f"[CHAT] {username}: {message}")
 
-        if message == "!bingojoin":
+        if message.lower() == "!bingojoin":
             print(f"[COMMAND] {username} requested to join Bingo")
             self.create_bingo_card(username)
-        elif message.startswith("!bingocheck"):
+        elif message.lower().startswith("!bingocheck"):
             parts = message.split()
             print(f"[COMMAND] {username} used bingocheck {parts[1]}")
             if len(parts) < 2:
                 return
-            self.handle_bingocheck(connection, username, parts[1])
+            self.handle_bingocheck(connection, username, parts[1], True)
+        elif message.lower().startswith("!bingouncheck"):
+            parts = message.split()
+            print(f"[COMMAND] {username} used unbingocheck {parts[1]}")
+            if len(parts) < 2:
+                return
+            self.handle_bingocheck(connection, username, parts[1], False)
 
     def create_bingo_card(self, username):
         """Generate and store a Bingo card for the user"""
@@ -86,7 +92,7 @@ class TwitchChatListener(SimpleIRCClient):
         except Exception as e:
             print(f"[ERROR] Failed to create card for {username}: {e}")
     
-    def handle_bingocheck(self, connection, username, number_str):
+    def handle_bingocheck(self, connection, username, number_str, mark = True):
         """Process !bingocheck command"""
         try:
             # Get user data
@@ -111,9 +117,13 @@ class TwitchChatListener(SimpleIRCClient):
             index = number - 1
             marked = user_data["marked"]
             if marked[index]:
+                if (not mark):
+                    marked[index] = mark
+                    user_ref.update({"marked": marked})
+                    print(f"[FIREBASE] {username} unmarked position {index}")
                 return
 
-            marked[index] = True
+            marked[index] = mark
             user_ref.update({"marked": marked})
 
             # Check for win
