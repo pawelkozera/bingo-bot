@@ -20,16 +20,16 @@ firebase_admin.initialize_app(cred)
 db = firestore.client()
 
 SENTENCES = [
-    "Played a FPS game",
-    "Ate on stream",
-    "Donation received",
-    "Technical difficulty",
-    "Chat suggested strategy",
-    "New subscriber",
-    "Lost a match",
+    "Pikachu appearance",
+    "Panther appearance",
+    "Sensei meeting",
+    "Pee break",
+    "Team mute",
+    "Hating on men",
+    "Someone has been scammed",
     "Won a match",
-    "Used a meme phrase",
-    "Read chat aloud"
+    "Alcoholic hiccup",
+    "Gambling addiction"
 ]
 
 class TwitchChatListener(SimpleIRCClient):
@@ -55,7 +55,12 @@ class TwitchChatListener(SimpleIRCClient):
         if message.lower() == "!bingojoin":
             print(f"[COMMAND] {username} requested to join Bingo")
             self.create_bingo_card(username)
-        elif message.lower().startswith("!bingocheck"):
+
+        if self.has_user_won(username):
+            print(f"[BLOCKED] {username} already won. Only !bingojoin is allowed.")
+            return 
+        
+        if message.lower().startswith("!bingocheck"):
             parts = message.split()
             print(f"[COMMAND] {username} used bingocheck {parts[1]}")
             if len(parts) < 2:
@@ -67,6 +72,21 @@ class TwitchChatListener(SimpleIRCClient):
             if len(parts) < 2:
                 return
             self.handle_bingocheck(connection, username, parts[1], False)
+    
+    def has_user_won(self, username):
+        """Check if user has already won"""
+        try:
+            user_ref = db.collection("users").document(username)
+            user_doc = user_ref.get()
+
+            if not user_doc.exists:
+                return False  # User doesn't have a bingo card
+
+            user_data = user_doc.to_dict()
+            return user_data.get("isBingo", False)  # Return True if they have won
+        except Exception as e:
+            print(f"[ERROR] Failed to check bingo status for {username}: {e}")
+            return False
 
     def create_bingo_card(self, username):
         """Generate and store a Bingo card for the user"""
