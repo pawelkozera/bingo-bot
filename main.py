@@ -72,6 +72,10 @@ class TwitchChatListener(SimpleIRCClient):
             if len(parts) < 2:
                 return
             self.handle_bingocheck(connection, username, parts[1], False)
+        elif message.lower() == "!bingoshow":
+            print(f"[COMMAND] {username} requested to show their card")
+            self.handle_bingoshow(connection, username)
+            return
     
     def has_user_won(self, username):
         """Check if user has already won"""
@@ -196,6 +200,29 @@ class TwitchChatListener(SimpleIRCClient):
                 return True
 
         return False
+
+    def handle_bingoshow(self, connection, username):
+        """Display user's bingo card in chat"""
+        try:
+            user_ref = db.collection("users").document(username)
+            user_doc = user_ref.get()
+
+            if not user_doc.exists:
+                return
+
+            user_data = user_doc.to_dict()
+            card = user_data.get("card", [])
+            marked = user_data.get("marked", [])
+            
+            card_text = ", ".join(
+                [f"{i+1}: {'✅ ' if marked[i] else ''}{text}" 
+                for i, text in enumerate(card)]
+            )
+
+            connection.privmsg(CHANNEL, f"{username}'s Bingo Card: {card_text[:400]}")
+
+        except Exception as e:
+            print(f"[ERROR] Failed to show card for {username}: {e}")
 
     def on_ping(self, connection, event):
         print("[DEBUG] Received PING, sending PONG...")
