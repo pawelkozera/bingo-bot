@@ -153,6 +153,7 @@ class TwitchChatListener(SimpleIRCClient):
             # Check for win
             if self.check_bingo(marked, grid_columns, grid_rows):
                 print(f"[FIREBASE] Bingo! {username}")
+                connection.privmsg(CHANNEL, f"🎉 BINGO {username}! 🎉")
                 user_ref.update({"marked": marked, "showCard": True, "isBingo": True})
             else:
                 print(f"[FIREBASE] {username} marked position {index}")
