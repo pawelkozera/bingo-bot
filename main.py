@@ -18,10 +18,17 @@ CHANNEL = config["CHANNEL"]
 cred = credentials.Certificate("firebase-key.json")  # Replace with your actual file path
 firebase_admin.initialize_app(cred)
 db = firestore.client()
+bingo_user_ref = db.collection("streamer").document(CHANNEL[1:]).collection("game_name").document("bingo")
+
+def get_user_ref(username):
+    return bingo_user_ref.collection("players").document(username)
 
 SENTENCES = [
     "Pikachu appearance",
     "Panther appearance",
+    #"Jinx appearance",
+    #"Smudge appearance",
+    #"Willow appearance",   
     "Sensei meeting",
     "Pee break",
     "Team mute",
@@ -29,7 +36,25 @@ SENTENCES = [
     "Someone has been scammed",
     "Won a match",
     "Alcoholic hiccup",
-    "Gambling addiction"
+    "Gambling addiction",
+    "Blaxzii girls problem",
+    "Pee break",
+    "Team mute",
+    "Hating on men",
+    "Someone has been scammed",
+    "Won a match",
+    "Alcoholic hiccup",
+    "Gambling addiction",
+    "Blaxzii girls problem",
+    "Pee break",
+    "Team mute",
+    "Hating on men",
+    "Someone has been scammed",
+    "Won a match",
+    "Alcoholic hiccup",
+    "Gambling addiction",
+    "Blaxzii girls problem",
+    "Warm up game"
 ]
 
 class TwitchChatListener(SimpleIRCClient):
@@ -80,7 +105,7 @@ class TwitchChatListener(SimpleIRCClient):
     def has_user_won(self, username):
         """Check if user has already won"""
         try:
-            user_ref = db.collection("users").document(username)
+            user_ref = get_user_ref(username)
             user_doc = user_ref.get()
 
             if not user_doc.exists:
@@ -96,7 +121,7 @@ class TwitchChatListener(SimpleIRCClient):
         """Generate and store a Bingo card for the user"""
         try:
             # Create a unique card with random sentences
-            card_size = 9  # Change this to any perfect square (4, 9, 16, 25, etc.)
+            card_size = 25  # Change this to any perfect square (4, 9, 16, 25, etc.)
             card = random.sample(SENTENCES, card_size)
             
             # Calculate grid dimensions for square grid
@@ -105,13 +130,16 @@ class TwitchChatListener(SimpleIRCClient):
                 raise ValueError("Card size must be a perfect square for square grid")
             
             # Store in Firestore
-            db.collection("users").document(username).set({
+            user_ref = bingo_user_ref.collection("players").document(username)
+            user_ref.set({
                 "card": card,
                 "marked": [False] * card_size,
-                "grid_columns": grid_side,
-                "grid_rows": grid_side,
                 "showCard": True,
                 "isBingo": False
+            })
+            bingo_user_ref.set({
+                "grid_columns": grid_side,
+                "grid_rows": grid_side
             })
             print(f"[FIREBASE] Created {grid_side}x{grid_side} card for {username}")
             
@@ -122,7 +150,7 @@ class TwitchChatListener(SimpleIRCClient):
         """Process !bingocheck command"""
         try:
             # Get user data
-            user_ref = db.collection("users").document(username)
+            user_ref = get_user_ref(username)
             user_doc = user_ref.get()
             
             if not user_doc.exists:
@@ -205,7 +233,7 @@ class TwitchChatListener(SimpleIRCClient):
     def handle_bingoshow(self, connection, username):
         """Display user's bingo card in chat"""
         try:
-            user_ref = db.collection("users").document(username)
+            user_ref = get_user_ref(username)
             user_doc = user_ref.get()
 
             if not user_doc.exists:
