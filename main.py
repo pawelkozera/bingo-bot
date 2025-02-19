@@ -5,7 +5,6 @@ import firebase_admin
 from firebase_admin import credentials, firestore
 from google.cloud.firestore import FieldFilter
 import random
-import math
 
 # Load Twitch credentials from JSON
 with open("twitch-IRC-credentials.json", "r") as config_file:
@@ -20,9 +19,13 @@ cred = credentials.Certificate("firebase-key.json")  # Replace with your actual 
 firebase_admin.initialize_app(cred)
 db = firestore.client()
 bingo_user_ref = db.collection("streamer").document(CHANNEL[1:]).collection("game_name").document("bingo")
+arena_user_ref = db.collection("streamer").document(CHANNEL[1:]).collection("game_name").document("arena")
 
 def get_user_ref(username):
     return bingo_user_ref.collection("players").document(username)
+
+def get_user_arena_ref(username):
+    return arena_user_ref.collection("players").document(username)
 
 def get_bingo_questions():
     questions_ref = db.collection("streamer").document(CHANNEL[1:]) \
@@ -52,9 +55,14 @@ print(f"Grid size: {settings['grid_rows']}x{settings['grid_columns']}")
 
 
 class TwitchChatListener(SimpleIRCClient):
+    users_in_arena = set()
+    arena_is_active = False
+
     def __init__(self):
         super().__init__()
         print("[DEBUG] TwitchChatListener initialized.")
+        self.check_initial_arena_status()
+        self.setup_arena_listener()
 
     def on_connect(self, connection, event):
         print("[DEBUG] Connected to Twitch IRC server.")
@@ -65,10 +73,66 @@ class TwitchChatListener(SimpleIRCClient):
 
     def on_join(self, connection, event):
         print(f"[DEBUG] Successfully joined {CHANNEL}")
+    
+    def check_initial_arena_status(self):
+        # Reference to the arena document
+        arena_doc_ref = db.collection("streamer").document(CHANNEL[1:]) \
+            .collection("game_name").document("arena")
+
+        # Pobierz dane raz na początku
+        doc = arena_doc_ref.get()
+        if doc.exists:
+            is_active = doc.to_dict().get('isActive', False)
+            print(f"[INITIAL ARENA STATUS] Active: {is_active}")
+            
+            # Ustaw początkowy status areny
+            self.arena_is_active = is_active
+    
+    def setup_arena_listener(self):
+        # Reference to the arena document
+        arena_doc_ref = db.collection("streamer").document(CHANNEL[1:]) \
+            .collection("game_name").document("arena")
+        
+        # Create the listener
+        self.arena_listener = arena_doc_ref.on_snapshot(self.on_arena_update)
+
+    def on_arena_update(self, doc_snapshot, changes, read_time):
+        for change in changes:
+            if change.type.name == 'MODIFIED':
+                doc = change.document
+                if doc.exists:
+                    is_active = doc.to_dict().get('isActive', False)
+                    print(f"[ARENA STATUS] Active: {is_active}")
+                    
+                    if is_active:
+                        self.arena_is_active = True
+                    else:
+                        self.arena_is_active = False
+                        self.users_in_arena.clear()
+
+    def check_and_add_user(self, username):
+        user_ref = get_user_arena_ref(username)
+        
+        doc = user_ref.get()
+        if not doc.exists:            
+            try:
+                user_ref.set({})
+                self.users_in_arena.add(username)
+                print(f"[DEBUG] Added new user: {username}")
+            except Exception as e:
+                print(f"[ERROR] Failed to add user {username}: {str(e)}")
+    
+    def __del__(self):
+        # Clean up listener when instance is destroyed
+        if hasattr(self, 'arena_listener'):
+            self.arena_listener.unsubscribe()
 
     def on_pubmsg(self, connection, event):
         username = event.source.split("!")[0]
         message = event.arguments[0]
+
+        if self.arena_is_active and username not in self.users_in_arena:
+            self.check_and_add_user(username)
 
         if username == "p0js" or username == "je1lybeann":
             if message.lower() == "!bingostart" or message.lower() == "!bingoactivate":
@@ -80,7 +144,7 @@ class TwitchChatListener(SimpleIRCClient):
                 print(f"[COMMAND] The bingo game ended!")
                 return
 
-        if not self.is_game_active():
+        if message.lower().startswith("!") and not self.is_game_active():
             print(f"[BLOCKED] The bingo game is not currently active!")
             return
 
